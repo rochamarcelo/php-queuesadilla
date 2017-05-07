@@ -24,13 +24,8 @@ RUN LC_ALL=en_US.UTF-8 add-apt-repository ppa:ondrej/php && \
     apt-get -qq update
 RUN apt-get -qq install -qq -y php5.6-cli php5.6-curl php5.6-mysql php5.6-pgsql php-pear php5.6-xdebug php5.6-redis php5.6-xml
 
-RUN \
-    curl -LsS https://phar.phpunit.de/phpunit.phar > phpunit.phar && \
-    curl -sS https://getcomposer.org/installer | php && \
-    mv composer.phar /usr/local/bin/composer && \
-    mv phpunit.phar /usr/local/bin/phpunit && \
-    chmod +x /usr/local/bin/composer /usr/local/bin/phpunit && \
-    phpunit --version
+RUN curl -sS https://getcomposer.org/installer | php && \
+    mv composer.phar /usr/local/bin/composer
 
 ADD composer.json /app/composer.json
 WORKDIR /app
@@ -48,6 +43,4 @@ ENV BEANSTALK_URL="beanstalk://127.0.0.1:11300?queue=default&timeout=1" \
     MEMORY_URL="synchronous:///?queue=default&timeout=1" \
     POSTGRES_URL="pgsql://travis:asdf12@127.0.0.1:5432/database_name?queue=default"
 
-ADD . /app
-
-RUN make test-docker
+VOLUME ["/app"]
