@@ -2,16 +2,15 @@ language: php
 
 services:
   # - memcached
-  # - mongodb
+  - mongodb
   - mysql
   - postgres
   # - rabbitmq
   - redis-server
 
 php:
-  - 5.6
-  - 7
-  - 7.1
+  - 7.2
+  - 7.3
 
 env:
   global:
@@ -22,12 +21,12 @@ env:
    - REDIS_URL="redis://travis@127.0.0.1:6379/0?queue=default&timeout=1"
    - MEMORY_URL="synchronous:///?queue=default&timeout=1"
    - POSTGRES_URL="pgsql://postgres@127.0.0.1:5432/database_name?queue=default"
+   - MONGO_URL="mongodb://127.0.0.1:27017/database_name
 
 before_script:
   - sudo apt-get update
   # beanstalkd
   - sudo apt-get install -qq --force-yes beanstalkd
-  - sudo beanstalkd -d -l 127.0.0.1 -p 11300
 
   # mysql
   - mysql -e 'CREATE DATABASE database_name;'
@@ -38,11 +37,7 @@ before_script:
   - psql -d database_name -f config/schema-pgsql.sql -U postgres;
 
   # extensions
-  - echo "extension = amqp.so" >> ~/.phpenv/versions/$(phpenv version-name)/etc/php.ini
-  - echo "extension = memcache.so" >> ~/.phpenv/versions/$(phpenv version-name)/etc/php.ini
   - echo "extension = redis.so" >> ~/.phpenv/versions/$(phpenv version-name)/etc/php.ini
-  - echo "extension = memcached.so" >> ~/.phpenv/versions/$(phpenv version-name)/etc/php.ini
-  - echo "extension = mongo.so" >> ~/.phpenv/versions/$(phpenv version-name)/etc/php.ini
 
   - composer self-update
   - composer install
@@ -53,4 +48,4 @@ script:
   - vendor/bin/phpmd src/ text cleancode,codesize,controversial,design,naming,unusedcode
 
 after_success:
-  - php vendor/bin/coveralls -v
+  - php vendor/bin/php-coveralls -v

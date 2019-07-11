@@ -16,7 +16,7 @@ abstract class AbstractPdoEngineTest extends TestCase
      *
      * @return void
      */
-    public function setUp()
+    public function setUp() : void
     {
         $this->config = ['url' => $this->url];
         $this->Logger = new NullLogger;
@@ -27,22 +27,22 @@ abstract class AbstractPdoEngineTest extends TestCase
     }
 
     /**
+     * Tear Down
+     *
+     * @return void
+     */
+    public function tearDown() : void
+    {
+        $this->clearEngine();
+        unset($this->Engine);
+    }
+
+    /**
      * Used to truncate the jobs table and to reset the auto increment value.
      *
      * @return void
      */
     abstract protected function clearEngine();
-
-    /**
-     * Tear Down
-     *
-     * @return void
-     */
-    public function tearDown()
-    {
-        $this->clearEngine();
-        unset($this->Engine);
-    }
 
     /**
      * @covers josegonzalez\Queuesadilla\Engine\Base::__construct
@@ -165,8 +165,61 @@ abstract class AbstractPdoEngineTest extends TestCase
             $this->markTestSkipped('No connection to database available');
         }
         $this->assertNull($this->Engine->pop('default'));
-        $this->assertTrue($this->Engine->push($this->Fixtures->default['first'], 'default'));
-        $this->assertEquals($this->Fixtures->default['first'], $this->Engine->pop('default'));
+        $this->assertTrue($this->Engine->push($this->Fixtures->default['first'], ['queue' => 'default', 'priority' => 4]));
+        $this->assertTrue($this->Engine->push($this->Fixtures->default['second'], ['queue' => 'default', 'priority' => 1]));
+        $this->assertTrue($this->Engine->push($this->Fixtures->default['third'], ['queue' => 'default', 'priority' => 3]));
+        $msg = 'We should have returned the second job, as it has the lowest priority';
+        $secondJobFixture = $this->Fixtures->default['second'];
+        $secondJobFixture['options']['priority'] = 1;
+        $this->assertEquals($secondJobFixture, $this->Engine->pop('default'), $msg);
+    }
+
+    /**
+     * @covers josegonzalez\Queuesadilla\Engine\PdoEngine::pop
+     * @covers josegonzalez\Queuesadilla\Engine\PdoEngine::generatePopSelectSql
+     * @covers josegonzalez\Queuesadilla\Engine\PdoEngine::generatePopOrderSql
+     * @covers josegonzalez\Queuesadilla\Engine\PdoEngine::formattedDateNow
+     * @covers josegonzalez\Queuesadilla\Engine\MysqlEngine::pop
+     * @covers josegonzalez\Queuesadilla\Engine\PostgresEngine::pop
+     */
+    public function testPopFIFO()
+    {
+        if ($this->Engine->connection() === null) {
+            $this->markTestSkipped('No connection to database available');
+        }
+        $this->assertNull($this->Engine->pop('default'));
+        $this->assertTrue($this->Engine->push($this->Fixtures->default['first'], ['queue' => 'default', 'priority' => 4]));
+        sleep(1);
+        $this->assertTrue($this->Engine->push($this->Fixtures->default['second'], ['queue' => 'default', 'priority' => 1]));
+        sleep(1);
+        $this->assertTrue($this->Engine->push($this->Fixtures->default['third'], ['queue' => 'default', 'priority' => 3]));
+        $msg = 'We should have returned the first job, as it has the lowest id (FIFO)';
+        $firstJobFixture = $this->Fixtures->default['first'];
+        $firstJobFixture['options']['priority'] = 4;
+        $this->assertEquals($firstJobFixture, $this->Engine->pop([
+            'queue' => 'default',
+            'pop_order' => PdoEngine::POP_ORDER_FIFO,
+        ]), $msg);
+    }
+
+    /**
+     * @covers josegonzalez\Queuesadilla\Engine\PdoEngine::pop
+     * @covers josegonzalez\Queuesadilla\Engine\MysqlEngine::pop
+     * @covers josegonzalez\Queuesadilla\Engine\PostgresEngine::pop
+     */
+    public function testPopInvalid()
+    {
+        if ($this->Engine->connection() === null) {
+            $this->markTestSkipped('No connection to database available');
+        }
+        $this->assertNull($this->Engine->pop('default'));
+        $this->assertTrue($this->Engine->push($this->Fixtures->default['first'], ['queue' => 'default', 'priority' => 4]));
+        $this->assertTrue($this->Engine->push($this->Fixtures->default['second'], ['queue' => 'default', 'priority' => 1]));
+        $this->assertTrue($this->Engine->push($this->Fixtures->default['third'], ['queue' => 'default', 'priority' => 3]));
+        $msg = 'We should have returned the second job, as it has the lowest priority';
+        $secondJobFixture = $this->Fixtures->default['second'];
+        $secondJobFixture['options']['priority'] = 1;
+        $this->assertEquals($secondJobFixture, $this->Engine->pop('default'), $msg);
     }
 
     /**
@@ -306,6 +359,7 @@ abstract class AbstractPdoEngineTest extends TestCase
             $query->setFetchMode(PDO::FETCH_LAZY);
             if (!$query->execute([])) {
                 $query->closeCursor();
+
                 return false;
             }
             if (!$query->columnCount()) {
@@ -314,6 +368,7 @@ abstract class AbstractPdoEngineTest extends TestCase
                     return true;
                 }
             }
+
             return $query;
         } catch (PDOException $e) {
             $e->queryString = $sql;
@@ -324,7 +379,8 @@ abstract class AbstractPdoEngineTest extends TestCase
         }
     }
 
-    protected function expandFixtureData() {
+    protected function expandFixtureData()
+    {
         foreach ($this->Fixtures->default as &$default) {
             $default['options']['attempts_delay'] = 600;
         }

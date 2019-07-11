@@ -17,6 +17,8 @@ abstract class Base extends MultiEventListener
 
     protected $engine;
 
+    protected $interval;
+
     protected $maxIterations;
 
     protected $maxRuntime;
@@ -28,6 +30,7 @@ abstract class Base extends MultiEventListener
     public function __construct(EngineInterface $engine, LoggerInterface $logger = null, $params = [])
     {
         $params = array_merge([
+            'interval' => 1,
             'maxIterations' => null,
             'maxRuntime' => null,
             'queue' => 'default',
@@ -36,6 +39,7 @@ abstract class Base extends MultiEventListener
         $this->engine = $engine;
         $this->queue = $params['queue'];
         $this->maxIterations = $params['maxIterations'];
+        $this->interval = $params['interval'];
         $this->iterations = 0;
         $this->maxRuntime = $params['maxRuntime'];
         $this->runtime = 0;
@@ -45,7 +49,7 @@ abstract class Base extends MultiEventListener
         $this->StatsListener = new StatsListener;
         $this->attachListener($this->StatsListener);
         $this->attachListener($this);
-        register_shutdown_function(array(&$this, 'shutdownHandler'));
+        register_shutdown_function([&$this, 'shutdownHandler']);
 
         return $this;
     }

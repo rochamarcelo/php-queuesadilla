@@ -10,6 +10,16 @@ use josegonzalez\Queuesadilla\Engine\Base;
 abstract class PdoEngine extends Base
 {
     /**
+     * Set next job by priority in pop method, this is the default
+     */
+    const POP_ORDER_PRIORITY = 0;
+
+    /**
+     * Set next job by id (FIFO) in pop method
+     */
+    const POP_ORDER_FIFO = 1;
+
+    /**
      *  String used to start a database identifier quoting to make it safe
      *
      * @var string
@@ -44,6 +54,7 @@ abstract class PdoEngine extends Base
         $sth = $this->connection()->prepare($sql);
         $sth->bindParam(1, $item['id'], PDO::PARAM_INT);
         $sth->execute();
+
         return $sth->rowCount() == 1;
     }
 
@@ -64,21 +75,10 @@ abstract class PdoEngine extends Base
 
         $this->cleanup($queue);
 
-        $selectSql = implode(" ", [
-            sprintf(
-                'SELECT id, %s, attempts FROM %s',
-                $this->quoteIdentifier('data'),
-                $this->quoteIdentifier($this->config('table'))
-            ),
-            sprintf('WHERE %s = ? AND %s != 1', $this->quoteIdentifier('queue'), $this->quoteIdentifier('locked')),
-            'AND (expires_at IS NULL OR expires_at > ?)',
-            'AND (delay_until IS NULL OR delay_until < ?)',
-            'ORDER BY priority ASC LIMIT 1 FOR UPDATE',
-        ]);
+        $selectSql = $this->generatePopSelectSql($options);
         $updateSql = sprintf('UPDATE %s SET locked = 1 WHERE id = ?', $this->quoteIdentifier($this->config('table')));
 
-        $datetime = new DateTime;
-        $dtFormatted = $datetime->format('Y-m-d H:i:s');
+        $dtFormatted = $this->formattedDateNow();
 
         try {
             $sth = $this->connection()->prepare($selectSql);
@@ -97,6 +97,7 @@ abstract class PdoEngine extends Base
                 $this->connection()->commit();
                 if ($sth->rowCount() == 1) {
                     $data = json_decode($result['data'], true);
+
                     return [
                         'id' => $result['id'],
                         'class' => $data['class'],
@@ -150,7 +151,8 @@ abstract class PdoEngine extends Base
         $item['options']['attempts_delay'] = $attemptsDelay;
         $data = json_encode($item);
 
-        $sql = 'INSERT INTO %s (%s, %s, %s, %s, %s, %s) VALUES (?, ?, ?, ?, ?, ?)';
+        $dtFormatted = $this->formattedDateNow();
+        $sql = 'INSERT INTO %s (%s, %s, %s, %s, %s, %s, %s) VALUES (?, ?, ?, ?, ?, ?, ?)';
         $sql = sprintf(
             $sql,
             $this->quoteIdentifier($this->config('table')),
@@ -159,7 +161,8 @@ abstract class PdoEngine extends Base
             $this->quoteIdentifier('priority'),
             $this->quoteIdentifier('expires_at'),
             $this->quoteIdentifier('delay_until'),
-            $this->quoteIdentifier('attempts')
+            $this->quoteIdentifier('attempts'),
+            $this->quoteIdentifier('created_at')
         );
         $sth = $this->connection()->prepare($sql);
         $sth->bindParam(1, $data, PDO::PARAM_STR);
@@ -168,11 +171,13 @@ abstract class PdoEngine extends Base
         $sth->bindParam(4, $expiresAt, PDO::PARAM_STR);
         $sth->bindParam(5, $delayUntil, PDO::PARAM_STR);
         $sth->bindParam(6, $attempts, PDO::PARAM_INT);
+        $sth->bindParam(7, $dtFormatted, PDO::PARAM_STR);
         $sth->execute();
 
         if ($sth->rowCount() == 1) {
             $this->lastJobId = $this->connection()->lastInsertId();
         }
+
         return $sth->rowCount() == 1;
     }
 
@@ -196,6 +201,7 @@ abstract class PdoEngine extends Base
         if (empty($results)) {
             return [];
         }
+
         return array_map(function ($result) {
             return trim($result['queue']);
         }, $results);
@@ -284,6 +290,7 @@ abstract class PdoEngine extends Base
         // string.string
         if (preg_match('/^[\w-]+\.[^ \*]*$/', $identifier)) {
             $items = explode('.', $identifier);
+
             return $this->startQuote . implode($this->endQuote . '.' . $this->startQuote, $items) . $this->endQuote;
         }
 
@@ -332,5 +339,61 @@ abstract class PdoEngine extends Base
         } catch (PDOException $e) {
             $this->logger()->error($e->getMessage());
         }
+    }
+
+    /**
+     * Generate the sql query to pop a job based on
+     * priority (default) or FIFO if `$options['pop_order']` is `self::POP_ORDER_FIFO`
+     *
+     * @param array $options
+     * @return string
+     */
+    protected function generatePopSelectSql($options)
+    {
+        $queryParts = [
+            sprintf(
+                'SELECT id, %s, attempts FROM %s',
+                $this->quoteIdentifier('data'),
+                $this->quoteIdentifier($this->config('table'))
+            ),
+            sprintf('WHERE %s = ? AND %s != 1', $this->quoteIdentifier('queue'), $this->quoteIdentifier('locked')),
+            'AND (expires_at IS NULL OR expires_at > ?)',
+            'AND (delay_until IS NULL OR delay_until < ?)',
+        ];
+
+        $queryParts[] = $this->generatePopOrderSql($options);
+
+        $queryParts[] = 'LIMIT 1 FOR UPDATE';
+
+        return implode(" ", $queryParts);
+    }
+
+    /**
+     * Generate ORDER sql
+     *
+     * @param array $options
+     * @return string
+     * @throws \InvalidArgumentException if the "pop_order" option is not valid or null
+     */
+    protected function generatePopOrderSql($options = [])
+    {
+        $orderPart = 'ORDER BY priority ASC';
+        if (isset($options['pop_order']) && $options['pop_order'] === self::POP_ORDER_FIFO) {
+            $orderPart = 'ORDER BY created_at ASC';
+        }
+
+        return $orderPart;
+    }
+
+    /**
+     * Get formatted date
+     *
+     * @return string
+     */
+    protected function formattedDateNow()
+    {
+        $datetime = new DateTime;
+
+        return $datetime->format('Y-m-d H:i:s');
     }
 }

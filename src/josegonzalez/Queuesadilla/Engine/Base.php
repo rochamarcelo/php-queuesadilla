@@ -38,8 +38,10 @@ abstract class Base implements EngineInterface
         $this->setLogger($logger);
         $this->config($this->baseConfig);
         $this->config($config);
+
         return $this;
     }
+
     public function getJobClass()
     {
         return '\\josegonzalez\\Queuesadilla\\Job\\Base';
@@ -50,6 +52,7 @@ abstract class Base implements EngineInterface
         if ($this->connection === null) {
             $this->connect();
         }
+
         return $this->connection;
     }
 
@@ -63,6 +66,7 @@ abstract class Base implements EngineInterface
         if (!is_array($item)) {
             return false;
         }
+
         return !empty($item['id']) && !empty($item['queue']);
     }
 }
