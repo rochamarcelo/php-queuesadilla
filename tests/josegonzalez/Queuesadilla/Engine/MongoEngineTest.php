@@ -55,7 +55,7 @@ class MongoEngineTest extends \PHPUnit\Framework\TestCase
      *
      * @return void
      */
-    public function testConnect()
+    public function testConnect(): void
     {
         $this->assertTrue($this->Engine->connect());
     }
