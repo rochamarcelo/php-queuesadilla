@@ -65,7 +65,7 @@ class MongoEngineTest extends \PHPUnit\Framework\TestCase
      *
      * @return void
      */
-    public function testConnectCallableForDatabase()
+    public function testConnectCallableForDatabase(): void
     {
         $mock = $this->getMockBuilder(\MongoDB\Database::class)
             ->disableOriginalConstructor()
